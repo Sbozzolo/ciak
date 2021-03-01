@@ -17,28 +17,28 @@
 
 import os
 
-from ciak import parser
+from ciak import ciak
 
 
 def test_read_asterisk_lines_from_file():
 
-    expected_output = [
+    expected_output = (
         "* Item 1",
         "** Item 1.1",
         "*** Item 1.1.1",
         "*Item 2",
         " * Item 3",
-    ]
+    )
 
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "example_file.txt")
 
-    assert parser.read_asterisk_lines_from_file(path) == expected_output
+    assert ciak.read_asterisk_lines_from_file(path) == expected_output
 
 
 def test_prepare_commands():
 
     # This is a fairly rich list with multiple cases
-    list_ = [
+    list_ = (
         "* 1",
         " ** 1.1",
         "*** 1.1.1",
@@ -50,8 +50,8 @@ def test_prepare_commands():
         "*** 2.1.2",
         "* 3",
         "* 4",
-    ]
-    expected_output = [
+    )
+    expected_output = (
         "1 1.1 1.1.1",
         "1 1.1 1.1.2",
         "1 1.2",
@@ -59,6 +59,6 @@ def test_prepare_commands():
         "2 2.1 2.1.2",
         "3",
         "4",
-    ]
+    )
 
-    assert parser.prepare_commands(list_) == expected_output
+    assert ciak.prepare_commands(list_) == expected_output

@@ -44,10 +44,14 @@ The two main functions in the file are :py:func:`~.read_asterisk_lines_from_file
 reads to relevant lines from a file, and :py:func:`~.prepare_commands`, which takes the
 output of the previous function to prepare a list of string that are going to be
 executed.
-
 """
 
+import argparse
+import logging
+import subprocess
 import re
+
+LOGGER = logging.getLogger(__name__)
 
 # ^ matches the beginning of the line
 # (\s)? matches any number of whitespaces
@@ -56,7 +60,7 @@ import re
 _ASTRISK_REGEX = r"^(\s)*(\*)+(\s)*"
 
 
-def read_asterisk_lines_from_file(path: str) -> list[str]:
+def read_asterisk_lines_from_file(path: str) -> tuple[str]:
     """Read the file in ``path`` and read its content ignoring lines that do
     not start with asterisks (up to initial spaces).
 
@@ -64,13 +68,16 @@ def read_asterisk_lines_from_file(path: str) -> list[str]:
     :type path: str
     :returns: List of strings with all the different lines that started with
               asterisk (up to the initial spaces).
-    :rtype: list of str
+    :rtype: tuple of str
     """
 
     # We read the entire file in one go. We are not expecting huge files, so this should
     # be okay.
     with open(path) as file_:
         lines = file_.read().splitlines()
+
+    for line in lines:
+        LOGGER.debug(line)
 
     def start_with_asterisk(string: str):
         """Check if string starts with asterisks, up to initial spaces.
@@ -80,10 +87,10 @@ def read_asterisk_lines_from_file(path: str) -> list[str]:
         rx = re.compile(_ASTRISK_REGEX)
         return rx.match(string) is not None
 
-    return list(filter(start_with_asterisk, lines))
+    return tuple(filter(start_with_asterisk, lines))
 
 
-def prepare_commands(list_: list[str]) -> list[str]:
+def prepare_commands(list_: tuple[str]) -> tuple[str]:
     """Transform a flat list of strings with asterisks into a list of full commands.
 
     This is done by walking through the tree and combining together those entries that
@@ -104,16 +111,16 @@ def prepare_commands(list_: list[str]) -> list[str]:
     :param list_: Output of :py:func:`~.read_asterisk_lines_from_file`
     :type list_: list of str
     :returns: List of commands.
-    :rtype: list of str
+    :rtype: tuple of str
 
     """
     # First we prepare another list with the number of asterisks of each element
-    num_asterisks = list(map(lambda x: len(re.findall(r"\*", x)), list_))
+    num_asterisks = tuple(map(lambda x: len(re.findall(r"\*", x)), list_))
 
     num_elements = len(num_asterisks)
 
     # Next, we remove all the asterisks and the whitespaces around them
-    list_no_astr = list(map(lambda x: re.sub(_ASTRISK_REGEX, "", x), list_))
+    list_no_astr = tuple(map(lambda x: re.sub(_ASTRISK_REGEX, "", x), list_))
 
     return_list = []
     current_command = []
@@ -154,4 +161,51 @@ def prepare_commands(list_: list[str]) -> list[str]:
                     : len(current_command) + diff_levels - 1
                 ]
 
-    return return_list
+    return tuple(return_list)
+
+
+def run_commands(list_: tuple[str], parallel: bool = False) -> None:
+    """Run all the commands in the given list.
+
+    :param list_: List of commands that have to be run.
+    :type list_: tuple of str
+    :param parallel: Whether to run the commands in parallel.
+    :type parallel: bool
+    """
+    # TODO: Add option to run commands in parallel
+
+    for cmd in list_:
+        LOGGER.info(f"Running command:\n{cmd}")
+
+        # The function parser.prepare_commands returns a list of strings, but subprocess
+        # doesn't want a string, it wants a list with command and arguments. So, we split
+        # the lists. This may seem additional work, since we made the effort to join the
+        # lists in parser.prepare_commands, but doing this allows us to process an
+        # arbitrary number of arguments at each level of the config file.
+        retcode = subprocess.run(cmd.split()).returncode
+        LOGGER.info(f"Return code {retcode}")
+
+def main():
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-c", "--ciakfile", help="Path of the ciak file",
+        required=True
+    )
+    parser.add_argument(
+        "-v", "--verbose", help="Enable verbose output", action="store_true"
+    )
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(format="%(asctime)s - %(message)s")
+        LOGGER.setLevel(logging.DEBUG)
+    else:
+        logging.basicConfig(format="%(message)s")
+        LOGGER.setLevel(logging.INFO)
+
+    # Do everything that needs to be done
+    run_commands(prepare_commands(read_asterisk_lines_from_file(args.ciakfile)))
+
+main()

@@ -11,6 +11,9 @@ repository = "https://github.com/sbozzolo/ciak"
 [tool.poetry.urls]
 "Bug Tracker" = "https://github.com/sbozzolo/motionpicture/issues"
 
+[tool.poetry.scripts]
+mopi = "ciak.ciak:main"
+
 [tool.poetry.dependencies]
 python = "^3.6"
 
