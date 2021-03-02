@@ -13,10 +13,58 @@
 # You should have received a copy of the GNU General Public License along with this
 # program; if not, see <https://www.gnu.org/licenses/>.
 
-# THIS IS A TEMPORARY SOLUTION TO PROVIDE SUPPORT FOR PYTHON3.6
+"""``ciak`` runs executables according to a configuration file (a ciakfile) that
+optionally contains user-declared variables which can be adjusted at runtime.
+
+
+The flow of this code is:
+
+1. :py:func:`~.main` reads in what ciakfile the user wants to run and what variables are
+   defined at runtime.
+
+2. The file is read by :py:func:`~.read_asterisk_lines_from_file` and parsed by
+   :py:func:`~.prepare_commands` to prepare a list of string that are going to be
+   executed.
+
+3. Looping over this list with :py:func:`~.substitute_template`, the placeholders in the
+   ciakfile are substituted with the default values or the runtime variables.
+
+4. The commands are executed by :py:func:`~.run_commands`.
+
+The :py:mod:`~.parser` module reads files and parse the content according to a syntax
+based on asterisks. :py:mod:`~.parser` ignores all the lines that do not start with
+asterisks (up to initial spaces), and reads the content as a tree with 'level' determined
+by the number of asterisks. For example:
+
+.. code-block
+
+   # This is a comment
+   ! This is a comment too
+   * This is a first level item (1)
+   ** This is a second level item (2)
+   ** This is another second level item (3)
+   *** This is a third level item (4)
+   * This is another first level item (5)
+
+In visual form, this corresponds to the tree:
+
+.. code-block
+
+        (1)        (5)
+       |   |
+      (2) (3)
+           |
+          (4)
+
+These will identify all the commands and arguments that ``ciak`` has to run. We walk
+through the tree to prepare the list of the commands. In this example, we would have
+``(1) (2)`` and ``(1) (3) (4)``.
+
+"""
 
 import argparse
 import logging
+import os
 import subprocess
 import re
 
@@ -29,12 +77,12 @@ LOGGER = logging.getLogger(__name__)
 _ASTRISK_REGEX = r"^(\s)*(\*)+(\s)*"
 
 
-def read_asterisk_lines_from_file(path):
+def read_asterisk_lines_from_file(path) :
     """Read the file in ``path`` and read its content ignoring lines that do
     not start with asterisks (up to initial spaces).
 
     :param path: Path of the file to read.
-    :type path: str
+    :type path
     :returns: List of strings with all the different lines that started with
               asterisk (up to the initial spaces).
     :rtype: tuple of str
@@ -48,10 +96,10 @@ def read_asterisk_lines_from_file(path):
     for line in lines:
         LOGGER.debug(line)
 
-    def start_with_asterisk(string: str):
+    def start_with_asterisk(string):
         """Check if string starts with asterisks, up to initial spaces.
 
-        :rtype: bool
+        :rtype
         """
         rx = re.compile(_ASTRISK_REGEX)
         return rx.match(string) is not None
@@ -59,7 +107,7 @@ def read_asterisk_lines_from_file(path):
     return tuple(filter(start_with_asterisk, lines))
 
 
-def prepare_commands(list_):
+def prepare_commands(list_) :
     """Transform a flat list of strings with asterisks into a list of full commands.
 
     This is done by walking through the tree and combining together those entries that
@@ -133,7 +181,7 @@ def prepare_commands(list_):
     return tuple(return_list)
 
 
-def substitute_template(string, substitution_dict):
+def substitute_template(string, substitution_dict) :
     """Substitute in the given string the placeholders with the values defined in
     substitution_dict.
 
@@ -183,18 +231,39 @@ def substitute_template(string, substitution_dict):
     return out_string
 
 
+def get_ciakfile(args_ciakfile, args_ciakfile_path):
+    """Parse arguments to find the full path of the requested ciakfile.
+
+    If ``args_ciakfile`` is provided, then we try to use it looking at the folder defined
+    by the environmental variable CIAKFILES_DIR (or '.' if the variable is not defined).
+    If it is not provided, we look at ``args_ciakfile_path``.
+
+    :param args_ciakfile: Name of the ciakfile (full name with extension).
+    :type args_ciakfile
+    :param args_ciakfile_path: Full path of a ciakfile.
+    :type args_ciakfile_path
+
+    """
+    if args_ciakfile:
+        if os.environ['CIAKFILES_DIR']:
+            return os.path.join(os.environ['CIAKFILES_DIR'], args_ciakfile)
+        return args_ciakfile
+
+    raise RuntimeError("One between ciakfile and --ciakfile-path is required")
+
+
 def run_commands(
-    list_: tuple[str], fail_fast: bool = False, parallel: bool = False
-) -> None:
+    list_, fail_fast = False, parallel = False
+) :
     """Run all the commands in the given list.
 
     :param list_: List of commands that have to be run.
     :type list_: tuple of str
     :param fail_fast: If True, stop the execution as soon as a command returns a non-zero
                       error code.
-    :type fail_fast: bool
+    :type fail_fast
     :param parallel: Whether to run the commands in parallel.
-    :type parallel: bool
+    :type parallel
 
     """
     # TODO: Add option to run commands in parallel
@@ -231,7 +300,14 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
 
     parser = argparse.ArgumentParser(description=desc)
 
-    parser.add_argument("-c", "--ciakfile", help="Path of the ciak file", required=True)
+    parser.add(
+        "ciakfile",
+        nargs="?",
+        help="Ciakfile to use among the ones found in CIAKFILES_DIR."
+        "If CIAKFILES_DIR is not defined, then '.' is assumed."
+    )
+    parser.add_argument("-c", "--ciakfile-path",
+                        help="Path of the ciak file")
     parser.add_argument(
         "-v", "--verbose", help="Enable verbose output", action="store_true"
     )
@@ -257,6 +333,8 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
 
     args = parser.parse_args()
 
+    ciakfile = get_ciakfile(args.ciakfile, args.ciakfile_path)
+
     if args.verbose:
         logging.basicConfig(format="%(asctime)s - %(message)s")
         LOGGER.setLevel(logging.DEBUG)
@@ -266,7 +344,7 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
 
     # Get argparse namespace as dictionary
     substitution_dict = vars(args).copy()
-    LOGGER.debug(f"{substitution_dict = }")
+    LOGGER.debug(f"substitution_dict = {substitution_dict}")
 
     # Remove the keys that are reserved
     for key in reserved_keys:
@@ -275,7 +353,7 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
     # Do everything that needs to be done
     commands = tuple(
         substitute_template(cmd, substitution_dict)
-        for cmd in prepare_commands(read_asterisk_lines_from_file(args.ciakfile))
+        for cmd in prepare_commands(read_asterisk_lines_from_file(ciakfile))
     )
 
     run_commands(commands, parallel=args.parallel, fail_fast=args.fail_fast)

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ciak"
-version = "0.1.0"
+version = "0.1.0-dev0"
 description = "Run executables according to a configuration file"
 authors = ["Gabriele Bozzola <sbozzolator@gmail.com>"]
 license = "GPL-3.0-or-later"
@@ -9,7 +9,7 @@ homepage = "https://github.com/sbozzolo/ciak"
 repository = "https://github.com/sbozzolo/ciak"
 
 [tool.poetry.urls]
-"Bug Tracker" = "https://github.com/sbozzolo/motionpicture/issues"
+"Bug Tracker" = "https://github.com/sbozzolo/ciak/issues"
 
 [tool.poetry.scripts]
 ciak = "ciak.ciak:main"
