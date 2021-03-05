@@ -62,3 +62,45 @@ def test_prepare_commands():
     )
 
     assert ciak.prepare_commands(list_) == expected_output
+
+
+def test_substitute_template():
+
+    # Nothing to do
+    assert ciak.substitute_template("test", {}) == "test"
+
+    # Nothing to do
+    assert ciak.substitute_template("test", {"bob": "unaga"}) == "test"
+
+    # One sub
+    assert ciak.substitute_template("{{test}}", {"test": "bob"}) == "bob"
+
+    # One sub with default not used
+    assert ciak.substitute_template("{{test::lol}}", {"test": "bob"}) == "bob"
+
+    # One sub with default used
+    assert ciak.substitute_template("{{test::lol}}", {"mamma": "gamma"}) == "lol"
+
+    # Two subs
+    assert (
+        ciak.substitute_template(
+            "{{test1}} and {{test2}}", {"test1": "mamma", "test2": "gamma"}
+        )
+        == "mamma and gamma"
+    )
+
+    # Two subs one with default not used
+    assert (
+        ciak.substitute_template(
+            "{{test1}} and {{test2::lol}}", {"test1": "mamma", "test2": "gamma"}
+        )
+        == "mamma and gamma"
+    )
+
+    # Two subs one with default
+    assert (
+        ciak.substitute_template(
+            "{{test1}} and {{test2::lol}}", {"test1": "mamma", "LOL": "gamma"}
+        )
+        == "mamma and lol"
+    )

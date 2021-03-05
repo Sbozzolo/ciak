@@ -13,38 +13,7 @@
 # You should have received a copy of the GNU General Public License along with this
 # program; if not, see <https://www.gnu.org/licenses/>.
 
-"""The :py:mod:`~.parser` module reads files and parse the content according to a syntax
-based on asterisks. :py:mod:`~.parser` ignores all the lines that do not start with
-asterisks (up to initial spaces), and reads the content as a tree with 'level' determined
-by the number of asterisks. For example:
-
-.. code-block
-
-   # This is a comment
-   ! This is a comment too
-   * This is a first level item (1)
-   ** This is a second level item (2)
-   ** This is another second level item (3)
-   *** This is a third level item (4)
-   * This is another first level item (5)
-
-This is represented as:
-
-.. code-block
-
-        (1)        (5)
-       |   |
-      (2) (3)
-           |
-          (4)
-
-These will identify all the commands and arguments that ``ciak`` has to run.
-
-The two main functions in the file are :py:func:`~.read_asterisk_lines_from_file`, which
-reads to relevant lines from a file, and :py:func:`~.prepare_commands`, which takes the
-output of the previous function to prepare a list of string that are going to be
-executed.
-"""
+# THIS IS A TEMPORARY SOLUTION TO PROVIDE SUPPORT FOR PYTHON3.6
 
 import argparse
 import logging
@@ -60,7 +29,7 @@ LOGGER = logging.getLogger(__name__)
 _ASTRISK_REGEX = r"^(\s)*(\*)+(\s)*"
 
 
-def read_asterisk_lines_from_file(path: str) -> tuple[str, ...]:
+def read_asterisk_lines_from_file(path):
     """Read the file in ``path`` and read its content ignoring lines that do
     not start with asterisks (up to initial spaces).
 
@@ -90,7 +59,7 @@ def read_asterisk_lines_from_file(path: str) -> tuple[str, ...]:
     return tuple(filter(start_with_asterisk, lines))
 
 
-def prepare_commands(list_: tuple[str, ...]) -> tuple[str, ...]:
+def prepare_commands(list_):
     """Transform a flat list of strings with asterisks into a list of full commands.
 
     This is done by walking through the tree and combining together those entries that
@@ -164,7 +133,7 @@ def prepare_commands(list_: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(return_list)
 
 
-def substitute_template(string: str, substitution_dict: dict[str, str]) -> str:
+def substitute_template(string, substitution_dict):
     """Substitute in the given string the placeholders with the values defined in
     substitution_dict.
 
@@ -192,14 +161,14 @@ def substitute_template(string: str, substitution_dict: dict[str, str]) -> str:
     # We make a copy of the string, since we are going to modify it
     out_string = string[:]
 
-    LOGGER.debug(f"{string =}")
+    LOGGER.debug(f"string = {string}")
 
     # Now, we iterate over the matches and substitute the correct value in the string
     for placeholder, key, has_default, default_value in rx.findall(string):
-        LOGGER.debug(f"{placeholder =}")
-        LOGGER.debug(f"{key =}")
-        LOGGER.debug(f"{has_default =}")
-        LOGGER.debug(f"{default_value =}")
+        LOGGER.debug(f"placeholder = {placeholder}")
+        LOGGER.debug(f"key = {key}")
+        LOGGER.debug(f"has_default = {has_default}")
+        LOGGER.debug(f"default_value = {default_value}")
         if key in substitution_dict:
             out_string = re.sub(placeholder, substitution_dict[key], out_string)
         else:
@@ -209,12 +178,12 @@ def substitute_template(string: str, substitution_dict: dict[str, str]) -> str:
                 out_string = re.sub(placeholder, default_value, out_string)
             else:
                 raise RuntimeError(f"Substitution dictionary does not have key {key}")
-        LOGGER.debug(f"{out_string =}")
+        LOGGER.debug(f"out_string = {out_string}")
 
     return out_string
 
 
-def run_commands(list_: tuple[str], parallel: bool = False) -> None:
+def run_commands(list_, parallel=False) -> None:
     """Run all the commands in the given list.
 
     :param list_: List of commands that have to be run.
@@ -239,14 +208,12 @@ def run_commands(list_: tuple[str], parallel: bool = False) -> None:
 def main():
 
     # These are not allowed because they are used to control ciak
-    reserved_keys = ["ciakfile", "parallel", "verbose"]
+    keys_not_allowed = ["ciakfile", "parallel", "verbose"]
 
     desc = f"""Orchestrate the execution of a series of commands using ciak files.
 A ciak file is a special config file that defines what commands you want to run.
 
-When declaring variables in the file, - are turned into _.
-
-Note: the keys {reserved_keys} are not allowed (as they are used to control the
+Note: the keys {keys_not_allowed} are not allowed (as they are used to control the
     program)."""
 
     parser = argparse.ArgumentParser(description=desc)
@@ -279,10 +246,10 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
 
     # Get argparse namespace as dictionary
     substitution_dict = vars(args).copy()
-    LOGGER.debug(f"{substitution_dict = }")
+    LOGGER.debug(f"substitution_dict = {substitution_dict}")
 
     # Remove the keys that are reserved
-    for key in reserved_keys:
+    for key in keys_not_allowed:
         del substitution_dict[key]
 
     # Do everything that needs to be done
