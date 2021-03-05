@@ -214,15 +214,23 @@ def substitute_template(string: str, substitution_dict: dict[str, str]) -> str:
     return out_string
 
 
-def run_commands(list_: tuple[str], parallel: bool = False) -> None:
+def run_commands(
+    list_: tuple[str], fail_fast: bool = False, parallel: bool = False
+) -> None:
     """Run all the commands in the given list.
 
     :param list_: List of commands that have to be run.
     :type list_: tuple of str
+    :param fail_fast: If True, stop the execution as soon as a command returns a non-zero
+                      error code.
+    :type fail_fast: bool
     :param parallel: Whether to run the commands in parallel.
     :type parallel: bool
+
     """
     # TODO: Add option to run commands in parallel
+    if parallel:
+        raise NotImplementedError("Parallel execution is not implemented yet")
 
     for cmd in list_:
         LOGGER.info(f"Running command:\n{cmd}")
@@ -233,13 +241,16 @@ def run_commands(list_: tuple[str], parallel: bool = False) -> None:
         # lists in parser.prepare_commands, but doing this allows us to process an
         # arbitrary number of arguments at each level of the config file.
         retcode = subprocess.run(cmd.split()).returncode
-        LOGGER.info(f"Return code {retcode}")
+        LOGGER.debug(f"Return code {retcode}")
+        if fail_fast and retcode != 0:
+            LOGGER.info(f"Command return with code {retcode}, aborting")
+            return
 
 
 def main():
 
     # These are not allowed because they are used to control ciak
-    reserved_keys = ["ciakfile", "parallel", "verbose"]
+    reserved_keys = ["ciakfile", "fail_fast", "parallel", "verbose"]
 
     desc = f"""Orchestrate the execution of a series of commands using ciak files.
 A ciak file is a special config file that defines what commands you want to run.
@@ -255,6 +266,13 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
     parser.add_argument(
         "-v", "--verbose", help="Enable verbose output", action="store_true"
     )
+
+    parser.add_argument(
+        "--fail-fast",
+        help="Stop execution if a command returns a non-zero error code",
+        action="store_true",
+    )
+
     parser.add_argument(
         "--parallel", help="Run commands in parallel", action="store_true"
     )
@@ -266,7 +284,7 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
     # will substitute the 'test' placeholder with 'bob'.
     for arg in unknown:
         if arg.startswith(("-", "--")):
-            parser.add_argument(arg.split('=')[0])
+            parser.add_argument(arg.split("=")[0])
 
     args = parser.parse_args()
 
@@ -291,4 +309,4 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
         for cmd in prepare_commands(read_asterisk_lines_from_file(args.ciakfile))
     )
 
-    run_commands(commands)
+    run_commands(commands, parallel=args.parallel, fail_fast=args.fail_fast)
