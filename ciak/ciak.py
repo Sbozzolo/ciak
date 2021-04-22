@@ -63,10 +63,11 @@ through the tree to prepare the list of the commands. In this example, we would 
 """
 
 import argparse
+import concurrent.futures
 import logging
 import os
-import subprocess
 import re
+import subprocess
 
 LOGGER = logging.getLogger(__name__)
 
@@ -234,9 +235,10 @@ def substitute_template(string: str, substitution_dict: dict[str, str]) -> str:
 def get_ciakfile(args_ciakfile, args_ciakfile_path):
     """Parse arguments to find the full path of the requested ciakfile.
 
-    If ``args_ciakfile`` is provided, then we try to use it looking at the folder defined
-    by the environmental variable CIAKFILES_DIR (or '.' if the variable is not defined).
-    If it is not provided, we look at ``args_ciakfile_path``.
+    If ``args_ciakfile_path`` is provided, used that. Otherwise. If
+    ``args_ciakfile`` is provided, then we try to use it looking at the folder
+    defined by the environmental variable CIAKFILES_DIR (or '.' if the variable
+    is not defined).
 
     :param args_ciakfile: Name of the ciakfile (full name with extension).
     :type args_ciakfile: str
@@ -244,12 +246,28 @@ def get_ciakfile(args_ciakfile, args_ciakfile_path):
     :type args_ciakfile_path: str
 
     """
-    if args_ciakfile:
-        if os.environ['CIAKFILES_DIR']:
-            return os.path.join(os.environ['CIAKFILES_DIR'], args_ciakfile)
+    if args_ciakfile_path is not None:
+        return args_ciakfile_path
+
+    if args_ciakfile is not None:
+        if "CIAKFILES_DIR" in os.environ:
+            return os.path.join(os.environ["CIAKFILES_DIR"], args_ciakfile)
         return args_ciakfile
 
     raise RuntimeError("One between ciakfile and --ciakfile-path is required")
+
+
+def _run_one_command(cmd: str) -> int:
+    """Run one given command.
+
+    :param cmd: Command to be executed.
+    :type cmd: str
+
+    :returns: Return code.
+    :rtype: int
+    """
+    LOGGER.info(f"Running command:\n{cmd}")
+    return subprocess.run(cmd.split()).returncode
 
 
 def run_commands(
@@ -266,19 +284,22 @@ def run_commands(
     :type parallel: bool
 
     """
-    # TODO: Add option to run commands in parallel
     if parallel:
-        raise NotImplementedError("Parallel execution is not implemented yet")
+        if fail_fast:
+            raise NotImplementedError(
+                "Parallel execution with --fail-fast " "is not implemented yet"
+            )
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            executor.map(_run_one_command, list_)
+        return
 
     for cmd in list_:
-        LOGGER.info(f"Running command:\n{cmd}")
-
         # The function parser.prepare_commands returns a list of strings, but subprocess
         # doesn't want a string, it wants a list with command and arguments. So, we split
         # the lists. This may seem additional work, since we made the effort to join the
         # lists in parser.prepare_commands, but doing this allows us to process an
         # arbitrary number of arguments at each level of the config file.
-        retcode = subprocess.run(cmd.split()).returncode
+        retcode = _run_one_command(cmd)
         LOGGER.debug(f"Return code {retcode}")
         if fail_fast and retcode != 0:
             LOGGER.info(f"Command return with code {retcode}, aborting")
@@ -300,14 +321,13 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
 
     parser = argparse.ArgumentParser(description=desc)
 
-    parser.add(
+    parser.add_argument(
         "ciakfile",
         nargs="?",
         help="Ciakfile to use among the ones found in CIAKFILES_DIR."
-        "If CIAKFILES_DIR is not defined, then '.' is assumed."
+        "If CIAKFILES_DIR is not defined, then '.' is assumed.",
     )
-    parser.add_argument("-c", "--ciakfile-path",
-                        help="Path of the ciak file")
+    parser.add_argument("-c", "--ciakfile-path", help="Path of the ciak file")
     parser.add_argument(
         "-v", "--verbose", help="Enable verbose output", action="store_true"
     )
