@@ -339,6 +339,12 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
     )
 
     parser.add_argument(
+        "--dry-run",
+        help="Print the list of commands to be executed, but do not run them.",
+        action="store_true",
+    )
+
+    parser.add_argument(
         "--parallel", help="Run commands in parallel", action="store_true"
     )
 
@@ -376,4 +382,9 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
         for cmd in prepare_commands(read_asterisk_lines_from_file(ciakfile))
     )
 
-    run_commands(commands, parallel=args.parallel, fail_fast=args.fail_fast)
+    LOGGER.debug(f"{substitution_dict =}")
+    if args.dry_run:
+        for cmd in commands:
+            print(cmd)
+    else:
+        run_commands(commands, parallel=args.parallel, fail_fast=args.fail_fast)
