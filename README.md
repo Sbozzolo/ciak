@@ -97,10 +97,25 @@ files. This can be achieved with
 ```
 Saving this as `ciak2.org`, running
 ``` sh
-ciak -c ciak2.org --parallel
+ciak -c ciak2.org
 ```
-will correspond to running `gzip file1`, `gzip file2`, ..., using as many processes
-as the number of cores available, as requested by the `--parallel` flag.
+will correspond to running `gzip file1`, `gzip file2`, ....
+
+It is possible to parallelize the execution of certain sections of the file with
+the tags `# BEGIN_PARALLEL` and `# END_PARALLEL`. At the moment, these have to be at
+the top level. For example,
+``` org
+* # BEGIN_PARALLEL
+* gzip
+** file1
+** file2
+** file3
+** file4
+* # END_PARALLEL
+```
+
+In this case, `ciak` will use as many processes as the number of cores
+available.
 
 ## ciak and org-mode
 
@@ -121,8 +136,9 @@ Using org-mode greatly enhances `ciak`'s self-documenting capabilities.
 `--fail-fast`, if enabled, `ciak` stops as soon as a non-zero return code is
 found.
 
-`--parellel`, if enabled, the commands are executed in parallel with a number of
-workers that is equal to the number of available cores on the machine.
+`--no-parellel`, if enabled, the commands are executed serially. By defaults,
+commands are executed in parallel with a number of workers that is equal to the
+number of available cores on the machine.
 
 `--dry-run`, if enabled, `ciak` will print the command that would be executed,
 without executing any.

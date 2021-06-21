@@ -16,25 +16,10 @@
 """``ciak`` runs executables according to a configuration file (a ciakfile) that
 optionally contains user-declared variables which can be adjusted at runtime.
 
-
-The flow of this code is:
-
-1. :py:func:`~.main` reads in what ciakfile the user wants to run and what variables are
-   defined at runtime.
-
-2. The file is read by :py:func:`~.read_asterisk_lines_from_file` and parsed by
-   :py:func:`~.prepare_commands` to prepare a list of string that are going to be
-   executed.
-
-3. Looping over this list with :py:func:`~.substitute_template`, the placeholders in the
-   ciakfile are substituted with the default values or the runtime variables.
-
-4. The commands are executed by :py:func:`~.run_commands`.
-
-The :py:mod:`~.parser` module reads files and parse the content according to a syntax
-based on asterisks. :py:mod:`~.parser` ignores all the lines that do not start with
-asterisks (up to initial spaces), and reads the content as a tree with 'level' determined
-by the number of asterisks. For example:
+``ciak`` reads files and parse the content according to a syntax based on asterisks.
+``ciak`` ignores all the lines that do not start with asterisks (up to initial spaces),
+and reads the content as a tree with 'level' determined by the number of asterisks. For
+example:
 
 .. code-block
 
@@ -60,25 +45,103 @@ These will identify all the commands and arguments that ``ciak`` has to run. We 
 through the tree to prepare the list of the commands. In this example, we would have
 ``(1) (2)`` and ``(1) (3) (4)``.
 
+It is possible to mark some portion of the tree as "PARALLEL", meaning that they can be
+executed in parallel. This is done with the # BEGIN_PARALLEL and # END_PARALLEL
+instructions. For example:
+
+.. code-block
+
+   * mkdir report
+   * # BEGIN_PARALLEL
+   ** touch report/first
+   ** touch report/second
+   * # END_PARALLEL
+   * rm report
+
+In this case, first a ``report`` folder is created. Then, two empty files are created in
+that folder in parallel. Finally, the folder is deleted.
+
+
+.. warning::
+
+   At the moment, parallel blocks can only be at the top level of the tree.
+
 """
+
+# The flow of this code is:
+
+# 1. :py:func:`~.main` reads in what ciakfile the user wants to run and what variables are
+#    defined at runtime.
+
+# 2. The file is read by :py:func:`~.read_asterisk_lines_from_file`.
+
+# 3. The output of :py:func:`~.read_asterisk_lines_from_file` is scanned for PARALLEL
+#    blocks by :py:func:`~.extract_execution_blocks`, which individuates the commands
+#    that can be executed in parallel.
+
+# 4. Each block (parallel and not) is parsed by :py:func:`~.prepare_commands` to prepare a
+#    list of string that are going to be executed.
+
+# 4. For each block, we loop over this list with :py:func:`~.substitute_template`, the
+#    placeholders in the ciakfile are substituted with the default values or the runtime
+#    variables.
+
+# 5. The commands are executed by :py:func:`~.run_commands`.
+
 
 import argparse
 import concurrent.futures
+import dataclasses
 import logging
 import os
 import re
 import subprocess
+import warnings
+
+# What marks the beginning and end of a parallel block?
+#
+# * # PARALLEL_BEGIN
+# * # PARALLEL_END
+#
+# The number of spaces around '#' does not matter
+_PARALLEL_INIT = "BEGIN_PARALLEL"
+_PARALLEL_END = "END_PARALLEL"
 
 LOGGER = logging.getLogger(__name__)
 
+# ^ marks the beginning of the line
+# \s* matches any number of whitespaces
+# \*+ matches one or more asterisk
+# \s* matches any number of whitespaces
+_ASTERISK_REGEX = r"^\s*\*+\s*"
+
 # ^ matches the beginning of the line
-# (\s)? matches any number of whitespaces
-# (\*)+ matches one or more asterisk
-# (\s)? matches any number of whitespaces
-_ASTRISK_REGEX = r"^(\s)*(\*)+(\s)*"
+# \s* matches any number of whitespaces
+# \* matches one or more asterisk
+# \s* matches any number of whitespaces
+# \# matches one instance of #
+# \s* matches any number of whitespaces
+# ({_PARALLEL_INIT}) matches one instance of _PARALLEL_INT
+# \s* matches any number of whitespaces
+# ^ marks the end of the line
+_PARALLEL_BEGIN_REGEX = rf"^\s*\*\s*\#\s*({_PARALLEL_INIT})\s*$"
+_PARALLEL_END_REGEX = rf"^\s*\*\s*\#\s*({_PARALLEL_END})\s*$"
 
 
-def read_asterisk_lines_from_file(path: str) -> tuple[str, ...]:
+@dataclasses.dataclass(frozen=True)
+class ExecutionBlock:
+    """List of commands that can be all run in parallel or not.
+
+    :ivar commands: Commands to be executed. These lines are all inside or outside a
+                    PARALLEL block, so they can all be executed serially or in parallel.
+    :ivar parallel: When parallel is True, the commands can be executed in parallel
+    """
+
+    commands: tuple[str]
+    parallel: bool
+
+
+def read_asterisk_lines_from_file(path: str) -> tuple[str]:
     """Read the file in ``path`` and read its content ignoring lines that do
     not start with asterisks (up to initial spaces).
 
@@ -102,13 +165,81 @@ def read_asterisk_lines_from_file(path: str) -> tuple[str, ...]:
 
         :rtype: bool
         """
-        rx = re.compile(_ASTRISK_REGEX)
+        rx = re.compile(_ASTERISK_REGEX)
         return rx.match(string) is not None
 
     return tuple(filter(start_with_asterisk, lines))
 
 
-def prepare_commands(list_: tuple[str, ...]) -> tuple[str, ...]:
+def extract_execution_blocks(lines: tuple[str]) -> tuple[ExecutionBlock]:
+    """Partition lines in execution blocks with commands that can be run in parallel or not.
+
+    Search through the lines for ``# PARALLEL_BEGIN`` and ``# PARALLEL_END``. Then,
+    return a list of blocks with lines that are all inside or all outside this markers.
+    In this way, we identify the blocks that can be run in parallel and the ones that
+    cannot.
+
+    :param lines: Lines that start with asterisk in the file.
+    :type lines: Tuple of strings
+    :returns: List of :py:class:`~.ExecutionBlock` with consistent execution needs
+              (all the lines can be executed at the same time or not).
+    :rtype: tuple of :py:class:`~.ExecutionBlock`
+
+    """
+    begin_rx = re.compile(_PARALLEL_BEGIN_REGEX)
+    end_rx = re.compile(_PARALLEL_END_REGEX)
+
+    block = []  # block will contain the lines corresponding to the current block
+    return_list = []
+
+    inside_parallel_block = False
+
+    for line in lines:
+        if begin_rx.match(line):
+            # We matched the beginning of a block, we have to flush out what we had
+            # before
+            if block:
+                return_list.append(
+                    ExecutionBlock(tuple(prepare_commands(block)), parallel=False)
+                )
+                block = []
+
+            inside_parallel_block = True
+
+            continue
+
+        if end_rx.match(line):
+            if inside_parallel_block:
+                if block:
+                    return_list.append(
+                        ExecutionBlock(tuple(prepare_commands(block)), parallel=True)
+                    )
+                    block = []
+                else:
+                    warnings.warn("Found empty parallel block")
+
+                inside_parallel_block = False
+            else:
+                # We match the end of a parallel block, but haven't matched the beginning
+                raise RuntimeError("End of parallel block found before the beginning")
+
+            continue
+
+        block.append(line)
+
+    if inside_parallel_block:
+        raise RuntimeError("Missing end of parallel block")
+
+    # We need to add the last group of lines
+    if block:
+        return_list.append(
+            ExecutionBlock(tuple(prepare_commands(block)), parallel=False)
+        )
+
+    return tuple(return_list)
+
+
+def prepare_commands(list_: tuple[str]) -> tuple[str]:
     """Transform a flat list of strings with asterisks into a list of full commands.
 
     This is done by walking through the tree and combining together those entries that
@@ -138,13 +269,14 @@ def prepare_commands(list_: tuple[str, ...]) -> tuple[str, ...]:
     num_elements = len(num_asterisks)
 
     # Next, we remove all the asterisks and the whitespaces around them
-    list_no_astr = tuple(map(lambda x: re.sub(_ASTRISK_REGEX, "", x), list_))
+    list_no_astr = tuple(map(lambda x: re.sub(_ASTERISK_REGEX, "", x), list_))
 
     return_list = []
     current_command = []
     for index, element in enumerate(list_no_astr):
-        # Add the current element to the list current_command. We are going
-        # to keep current_command updated.
+        # Add the current element to the list current_command. We are going to keep
+        # current_command updated with the new entries until we find a leaf of the tree.
+        # At that point, we append current_command to return_list.
         current_command.append(element)
 
         # Is this a leaf of the tree?
@@ -157,7 +289,8 @@ def prepare_commands(list_: tuple[str, ...]) -> tuple[str, ...]:
             # well-defined
             diff_levels = num_asterisks[index + 1] - num_asterisks[index]
             # If diff_levels is negative, then it is a leaf because it means that the
-            # next item as fewer asterisks
+            # next item as fewer asterisks. If it is zero, then the next item is another
+            # command, so this is a leaf.
             if diff_levels <= 0:
                 return_list.append(" ".join(current_command))
                 # Now, current_command has to be synced to the correct level, which is
@@ -267,6 +400,11 @@ def _run_one_command(cmd: str) -> int:
     :rtype: int
     """
     LOGGER.info(f"Running command:\n{cmd}")
+    # The function parser.prepare_commands returns a list of strings, but subprocess
+    # doesn't want a string, it wants a list with command and arguments. So, we split the
+    # lists. This may seem additional work, since we made the effort to join the lists in
+    # parser.prepare_commands, but doing this allows us to process an arbitrary number of
+    # arguments at each level of the config file.
     return subprocess.run(cmd.split()).returncode
 
 
@@ -294,11 +432,6 @@ def run_commands(
         return
 
     for cmd in list_:
-        # The function parser.prepare_commands returns a list of strings, but subprocess
-        # doesn't want a string, it wants a list with command and arguments. So, we split
-        # the lists. This may seem additional work, since we made the effort to join the
-        # lists in parser.prepare_commands, but doing this allows us to process an
-        # arbitrary number of arguments at each level of the config file.
         retcode = _run_one_command(cmd)
         LOGGER.debug(f"Return code {retcode}")
         if fail_fast and retcode != 0:
@@ -309,7 +442,7 @@ def run_commands(
 def main():
 
     # These are not allowed because they are used to control ciak
-    reserved_keys = ["ciakfile", "fail_fast", "parallel", "verbose"]
+    reserved_keys = ["ciakfile", "fail_fast", "no_parallel", "verbose"]
 
     desc = f"""Orchestrate the execution of a series of commands using ciak files.
 A ciak file is a special config file that defines what commands you want to run.
@@ -345,7 +478,7 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
     )
 
     parser.add_argument(
-        "--parallel", help="Run commands in parallel", action="store_true"
+        "--no-parallel", help="Ignore parallel blocks", action="store_true"
     )
 
     args, unknown = parser.parse_known_args()
@@ -376,15 +509,22 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
     for key in reserved_keys:
         del substitution_dict[key]
 
-    # Do everything that needs to be done
-    commands = tuple(
-        substitute_template(cmd, substitution_dict)
-        for cmd in prepare_commands(read_asterisk_lines_from_file(ciakfile))
-    )
+    execution_blocks = extract_execution_blocks(read_asterisk_lines_from_file(ciakfile))
 
-    LOGGER.debug(f"{substitution_dict =}")
-    if args.dry_run:
-        for cmd in commands:
-            print(cmd)
-    else:
-        run_commands(commands, parallel=args.parallel, fail_fast=args.fail_fast)
+    for block in execution_blocks:
+        # Extract commands as list of string, prepare them and run them.
+        commands = tuple(
+            substitute_template(cmd, substitution_dict)
+            for cmd in prepare_commands(block.commands)
+        )
+        if args.dry_run:
+            for cmd in commands:
+                print(cmd)
+        else:
+            # We run the command in parallel if the block is set to be run in
+            # parallel and if we parallel execution is not inhibited
+            run_commands(
+                commands,
+                parallel=block.parallel and (not args.no_parallel),
+                fail_fast=args.fail_fast,
+            )
