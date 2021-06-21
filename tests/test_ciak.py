@@ -16,6 +16,7 @@
 # this program; if not, see <https://www.gnu.org/licenses/>.
 
 import os
+import pytest
 
 from ciak import ciak
 
@@ -33,6 +34,39 @@ def test_read_asterisk_lines_from_file():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "example_file.txt")
 
     assert ciak.read_asterisk_lines_from_file(path) == expected_output
+
+
+def test_extract_execution_blocks():
+
+    # No PARELLEL_END
+    with pytest.raises(RuntimeError):
+        ciak.extract_execution_blocks(("* # BEGIN_PARALLEL",))
+
+    # PARELLEL_END without PARALLEL_BEGIN
+    with pytest.raises(RuntimeError):
+        ciak.extract_execution_blocks(("* # END_PARALLEL",))
+
+    # Empty parallel block
+    with pytest.warns(Warning):
+        ciak.extract_execution_blocks(("* # BEGIN_PARALLEL", "* # END_PARALLEL"))
+
+    input_ = (
+        "* ls",
+        "** -la",
+        "* # BEGIN_PARALLEL",
+        "* touch this",
+        "* touch this_too",
+        "* # END_PARALLEL",
+        "* touch that",
+    )
+
+    expected_out = (
+        ciak.ExecutionBlock(("ls -la",), False),
+        ciak.ExecutionBlock(("touch this", "touch this_too"), True),
+        ciak.ExecutionBlock(("touch that",), False),
+    )
+
+    assert ciak.extract_execution_blocks(input_) == expected_out
 
 
 def test_prepare_commands():
