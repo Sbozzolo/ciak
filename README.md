@@ -137,6 +137,9 @@ We use:
 * [pytest](https://pytest.org) for unit tests (with `pytest-cov` for test
   coverage).
 * [mypy](https://mypy.readthedocs.io/) for static type analysis.
+* [isort](https://isort.readthedocs.io/) to sort the import statements.
+* [flake8](https://flake8.pycqa.org/) for general static analysis.
+* [pre-commit](https://pre-commit.com/) to apply linting rules before commits.
 * GitHub actions for continuous integration.
 
 We are happy to accept contributions.
