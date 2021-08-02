@@ -124,6 +124,9 @@ found.
 `--parellel`, if enabled, the commands are executed in parallel with a number of
 workers that is equal to the number of available cores on the machine.
 
+`--dry-run`, if enabled, `ciak` will print the command that would be executed,
+without executing any.
+
 # Development
 
 We use:
