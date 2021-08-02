@@ -2,10 +2,12 @@
 <img src="https://github.com/Sbozzolo/ciak/raw/main/logo.png" width="534" height="178">
 </p>
 
+[![PyPI version](https://badge.fury.io/py/ciak.svg)](https://badge.fury.io/py/ciak)
+
 *README/DOCUMENTATION IS WORK IN PROGRESS*
 
-`ciak` is a Python program that runs executables according to a configuration
-file (a *ciakfile*) that optional contains user-declared variables which can be
+`ciak` is a Python program to run executables according to a configuration file
+(a *ciakfile*) optionally containing user-declared variables that can be
 adjusted at runtime.
 
 A ciakfile is a simple text file that describes a nested tree using asterisks
@@ -32,8 +34,8 @@ configuration file looks like.
 ``` sh
 pip3 install ciak
 ```
-`ciak` requires Python3.9 and has no external dependency.
-See ciak36 [TODO: ADD LINK HERE] for compatibility with previous versions of Python.
+`ciak` requires `python >= 3.9` and has no external runtime dependency.
+See [ciak36](https://github.com/Sbozzolo/ciak#ciak36) for compatibility with previous versions of Python.
 
 ## Why should I use ciak instead of a shell script?
 
@@ -48,6 +50,11 @@ shell script. The main advantages of `ciak` are:
 
 However, by design, `ciak` does not support any shell feature (like input/output
 redirection, for loops, variable assignment, ...).
+
+`ciak` can trivially parallelize the execution of some commands. Hence, you can
+use it as a replacement of [GNU
+Parallel](https://www.gnu.org/software/parallel/) to parallelize commands
+defined in a configuration file.
 
 ## ciak36
 
@@ -69,6 +76,8 @@ Valid ciakfiles are text files with the following characteristics:
   will be substituted at runtime with values specified via command-line or with
   the default value.
 - Indentation, leading/trailing spaces, and file extension do not matter.
+- Parallel blocks must be at the top level (only one asterisk), they start with
+  `# BEGIN_PARALLEL` and end with `# END_PARALLEL`.
 
 ## Examples
 

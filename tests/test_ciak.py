@@ -16,6 +16,7 @@
 # this program; if not, see <https://www.gnu.org/licenses/>.
 
 import os
+
 import pytest
 
 from ciak import ciak

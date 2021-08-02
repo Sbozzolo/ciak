@@ -13,8 +13,11 @@
 # You should have received a copy of the GNU General Public License along with this
 # program; if not, see <https://www.gnu.org/licenses/>.
 
-"""``ciak`` runs executables according to a configuration file (a ciakfile) that
-optionally contains user-declared variables which can be adjusted at runtime.
+"""``ciak`` runs executables according to a configuration file.
+
+``ciak`` orchestrates the execution of command-line programs as defined by text
+files. Such configuration files, known as ciakfiles, can optionally contains
+user-declared variables which can be adjusted at runtime.
 
 ``ciak`` reads files and parse the content according to a syntax based on asterisks.
 ``ciak`` ignores all the lines that do not start with asterisks (up to initial spaces),
@@ -142,16 +145,18 @@ class ExecutionBlock:
 
 
 def read_asterisk_lines_from_file(path) :
-    """Read the file in ``path`` and read its content ignoring lines that do
-    not start with asterisks (up to initial spaces).
+    """Read the file in ``path`` according to the ``ciak`` syntax.
+
+    Read the file in ``path`` ignoring lines that do not start with asterisks (up to
+    initial spaces).
 
     :param path: Path of the file to read.
     :type path
     :returns: List of strings with all the different lines that started with
               asterisk (up to the initial spaces).
     :rtype: tuple of str
-    """
 
+    """
     # We read the entire file in one go. We are not expecting huge files, so this should
     # be okay.
     with open(path) as file_:
@@ -316,8 +321,7 @@ def prepare_commands(list_) :
 
 
 def substitute_template(string, substitution_dict) :
-    """Substitute in the given string the placeholders with the values defined in
-    substitution_dict.
+    """Substitute in the given string the placeholders using ``substitution_dict``.
 
     The placeholders are defined by two pairs of curly parentheses, ``{{key}}``. Default
     values can be specified after the double colon, for example, to set the default value
@@ -440,7 +444,7 @@ def run_commands(
 
 
 def main():
-
+    """Run the entire program."""
     # These are not allowed because they are used to control ciak
     reserved_keys = ["ciakfile", "fail_fast", "no_parallel", "verbose"]
 
