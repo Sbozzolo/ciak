@@ -126,6 +126,7 @@ value. This promotes code reuse.
 import argparse
 import concurrent.futures
 import dataclasses
+import itertools
 import logging
 import os
 import re
@@ -435,26 +436,34 @@ def get_ciakfile(
     raise RuntimeError(f"Ciakfile {args_ciakfile_path} does not exist")
 
 
-def _run_one_command(cmd: str) -> int:
+def _run_one_command(cmd: str, shell: bool = False) -> int:
     """Run one given command.
 
     :param cmd: Command to be executed.
     :type cmd: str
 
+    :param shell: Run the command through a shell (needed to expand variables and globs).
+    :type shell: bool
+
     :returns: Return code.
     :rtype: int
+
     """
     LOGGER.info(f"Running command:\n{cmd}")
     # The function parser.prepare_commands returns a list of strings, but subprocess
-    # doesn't want a string, it wants a list with command and arguments. So, we split the
-    # lists. This may seem additional work, since we made the effort to join the lists in
-    # parser.prepare_commands, but doing this allows us to process an arbitrary number of
-    # arguments at each level of the config file.
-    return subprocess.run(cmd.split()).returncode
+    # (when run without a shell) doesn't want a string, it wants a list with command and
+    # arguments. So, we split the lists. This may seem additional work, since we made the
+    # effort to join the lists in parser.prepare_commands, but doing this allows us to
+    # process an arbitrary number of arguments at each level of the config file.
+    sbcmd = cmd if shell else cmd.split()
+    return subprocess.run(sbcmd, shell=shell).returncode
 
 
 def run_commands(
-    list_: tuple[str, ...], fail_fast: bool = False, parallel: bool = False
+    list_: tuple[str, ...],
+    fail_fast: bool = False,
+    parallel: bool = False,
+    shell: bool = False,
 ) -> None:
     """Run all the commands in the given list.
 
@@ -465,6 +474,8 @@ def run_commands(
     :type fail_fast: bool
     :param parallel: Whether to run the commands in parallel.
     :type parallel: bool
+    :param shell: Run the command through a shell (needed to expand variables and globs).
+    :type shell: bool
 
     """
     if parallel:
@@ -473,11 +484,11 @@ def run_commands(
                 "Parallel execution with --fail-fast is not implemented yet"
             )
         with concurrent.futures.ProcessPoolExecutor() as executor:
-            executor.map(_run_one_command, list_)
+            executor.map(_run_one_command, list_, itertools.repeat(shell))
         return
 
     for cmd in list_:
-        retcode = _run_one_command(cmd)
+        retcode = _run_one_command(cmd, shell=shell)
         LOGGER.debug(f"Return code {retcode}")
         if fail_fast and retcode != 0:
             LOGGER.info(f"Command return with code {retcode}, aborting")
@@ -513,6 +524,12 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
     parser.add_argument(
         "--fail-fast",
         help="Stop execution if a command returns a non-zero error code",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--with-shell",
+        help="Execute commands inside a shell (to expand variables and globs)",
         action="store_true",
     )
 
@@ -574,4 +591,5 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
                 commands,
                 parallel=block.parallel and (not args.no_parallel),
                 fail_fast=args.fail_fast,
+                shell=args.with_shell,
             )

@@ -242,6 +242,12 @@ number of available cores on the machine.
 `--dry-run`, if enabled, `ciak` will print the command that would be executed,
 without executing any.
 
+`--with-shell`, if enabled, `ciak` will run the commands through a shell
+(otherwise it will run them directly). This is needed to use shell variables or
+expansions (e.g., `*`). Running through a shell poses a security risk, so use
+this option only if you trust the ciakfile.
+
+
 ## Development
 
 We use:

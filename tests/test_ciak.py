@@ -179,6 +179,9 @@ def test_run_one_command():
     # _run_command takes a string for the command and returns the exit code
     assert ciak._run_one_command("ls -l -a -h") == 0
 
+    # Check with shell
+    assert ciak._run_one_command("ls -l -a -h", shell=True) == 0
+
 
 def test_run_commands():
 
@@ -191,6 +194,10 @@ def test_run_commands():
 
     # Test two commands in parallel, just checking that there are no errors
     _ = ciak.run_commands(("ls -l -a -h", "ls -h -a"), parallel=True)
+
+    # Check with shell
+    # Test two commands in parallel, just checking that there are no errors
+    _ = ciak.run_commands(("ls -l -a -h", "ls -h -a"), parallel=True, shell=True)
 
 
 def test_main(tmp_path):
@@ -225,16 +232,3 @@ def test_main(tmp_path):
         ciak.main()
 
     assert os.path.isfile(tmp_path / "sub/this") is True
-
-    with mock.patch(
-        "sys.argv",
-        [
-            "main",
-            "--ciakfile-path",
-            str(path),
-            "--where",
-            str(tmp_path / ""),
-            "--verbose",
-        ],
-    ):
-        ciak.main()
