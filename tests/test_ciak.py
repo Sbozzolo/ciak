@@ -107,8 +107,12 @@ def test_substitute_template():
 
     # Nothing to do
     assert ciak.substitute_template("test", {"bob": "unaga"}) == "test"
+
     # One sub
     assert ciak.substitute_template("{{test}}", {"test": "bob"}) == "bob"
+
+    # sub with empty default
+    assert ciak.substitute_template("{{test::}}", {"bob": "bob"}) == ""
 
     # One sub with default not used
     assert ciak.substitute_template("{{test::lol}}", {"test": "bob"}) == "bob"
