@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ciak"
-version = "0.1.0-dev0"
+version = "0.1.0"
 description = "Run executables according to a configuration file"
 authors = ["Gabriele Bozzola <sbozzolator@gmail.com>"]
 license = "GPL-3.0-or-later"
