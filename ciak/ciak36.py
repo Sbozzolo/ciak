@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021 Gabriele Bozzola
+# Copyright (C) 2021-2022 Gabriele Bozzola
 #
 # This program is free software; you can redistribute it and/or modify it under the terms
 # of the GNU General Public License as published by the Free Software Foundation; either
@@ -30,6 +30,7 @@ example:
    ! This is a comment too
    * This is a first level item (1)
    ** This is a second level item (2)
+      This is a command. Everything that does not start with `*` is a comment
    ** This is another second level item (3)
    *** This is a third level item (4)
    * This is another first level item (5)
@@ -64,10 +65,40 @@ instructions. For example:
 In this case, first a ``report`` folder is created. Then, two empty files are created in
 that folder in parallel. Finally, the folder is deleted.
 
-
 .. warning::
 
    At the moment, parallel blocks can only be at the top level of the tree.
+
+The previous block is equivalent to:
+
+.. code-block
+
+   * mkdir report
+   * # BEGIN_PARALLEL
+   ** touch
+   *** report/first
+   *** report/second
+   * # END_PARALLEL
+   * rm report
+
+Here, we specified the command (``touch``) once, and the various arguments (called in
+different invocations of ``touch``) in nested levels.
+
+What makes ``ciak`` powerful is its templating system: ``ciakfiles`` can contain
+variables that can be adjusted at runtime. For instance:
+
+.. code-block
+
+   * mkdir {{foldername::report}}
+   * # BEGIN_PARALLEL
+   ** touch
+   *** report/first
+   *** report/second
+   * # END_PARALLEL
+   * rm {{foldername::report}}
+
+In this block, ``foldername`` becomes a command-line argument with ``report`` as default
+value. This promotes code reuse.
 
 """
 
@@ -99,14 +130,15 @@ import os
 import re
 import subprocess
 import warnings
+from typing import Optional
 
 # What marks the beginning and end of a parallel block?
 #
-# * # PARALLEL_BEGIN
-# * # PARALLEL_END
+# * # BEGIN_PARELLEL
+# * # END_PARALLEL
 #
 # The number of spaces around '#' does not matter
-_PARALLEL_INIT = "BEGIN_PARALLEL"
+_PARALLEL_BEGIN = "BEGIN_PARALLEL"
 _PARALLEL_END = "END_PARALLEL"
 
 LOGGER = logging.getLogger(__name__)
@@ -123,10 +155,10 @@ _ASTERISK_REGEX = r"^\s*\*+\s*"
 # \s* matches any number of whitespaces
 # \# matches one instance of #
 # \s* matches any number of whitespaces
-# ({_PARALLEL_INIT}) matches one instance of _PARALLEL_INT
+# ({_PARALLEL_BEGIN}) matches one instance of _PARALLEL_BEGIN
 # \s* matches any number of whitespaces
 # ^ marks the end of the line
-_PARALLEL_BEGIN_REGEX = rf"^\s*\*\s*\#\s*({_PARALLEL_INIT})\s*$"
+_PARALLEL_BEGIN_REGEX = rf"^\s*\*\s*\#\s*({_PARALLEL_BEGIN})\s*$"
 _PARALLEL_END_REGEX = rf"^\s*\*\s*\#\s*({_PARALLEL_END})\s*$"
 
 
@@ -177,12 +209,12 @@ def read_asterisk_lines_from_file(path) :
 
 
 def extract_execution_blocks(lines) :
-    """Partition lines in execution blocks with commands that can be run in parallel or not.
+    f"""Partition lines in execution blocks with commands that can be run in parallel or not.
 
-    Search through the lines for ``# PARALLEL_BEGIN`` and ``# PARALLEL_END``. Then,
-    return a list of blocks with lines that are all inside or all outside this markers.
-    In this way, we identify the blocks that can be run in parallel and the ones that
-    cannot.
+    Search through the lines for ``# f{_PARALLEL_BEGIN}`` and ``# f{_PARALLEL_END}``.
+    Then, return a list of blocks with lines that are all inside or all outside this
+    markers. In this way, we identify the blocks that can be run in parallel and the ones
+    that cannot.
 
     :param lines: Lines that start with asterisk in the file.
     :type lines: Tuple of strings
@@ -194,7 +226,9 @@ def extract_execution_blocks(lines) :
     begin_rx = re.compile(_PARALLEL_BEGIN_REGEX)
     end_rx = re.compile(_PARALLEL_END_REGEX)
 
-    block = []  # block will contain the lines corresponding to the current block
+    # block will contain the lines corresponding to the current block
+    block = []
+    # return_list will be all the parsed ExecutionBlocks
     return_list = []
 
     inside_parallel_block = False
@@ -369,13 +403,15 @@ def substitute_template(string, substitution_dict) :
     return out_string
 
 
-def get_ciakfile(args_ciakfile, args_ciakfile_path):
+def get_ciakfile(
+    args_ciakfile: Optional[str] = None, args_ciakfile_path: Optional[str] = None
+) :
     """Parse arguments to find the full path of the requested ciakfile.
 
-    If ``args_ciakfile_path`` is provided, used that. Otherwise. If
-    ``args_ciakfile`` is provided, then we try to use it looking at the folder
-    defined by the environmental variable CIAKFILES_DIR (or '.' if the variable
-    is not defined).
+    If ``args_ciakfile_path`` is provided, used that. Otherwise. If ``args_ciakfile`` is
+    provided, then we try to use it looking at the folder defined by the environmental
+    variable CIAKFILES_DIR (or '.' if the variable is not defined). The function raises
+    an error if the file does not exist.
 
     :param args_ciakfile: Name of the ciakfile (full name with extension).
     :type args_ciakfile
@@ -383,15 +419,20 @@ def get_ciakfile(args_ciakfile, args_ciakfile_path):
     :type args_ciakfile_path
 
     """
-    if args_ciakfile_path is not None:
+    if args_ciakfile_path is None:
+        if args_ciakfile is None:
+            raise RuntimeError("One between ciakfile and --ciakfile-path is required")
+
+        # Here, args_ciakfile_path is None, but args_ciakfile is not. So, the path of
+        # ciakfile was not provided, we will use the CIAKFILES_DIR. If CIAKFILES_DIR
+        # is not provided, we will use the local folder
+        prefix = os.environ.get("CIAKFILES_DIR", os.getcwd())
+        args_ciakfile_path = os.path.join(prefix, args_ciakfile)
+
+    # If we are here, args_ciakfile_path must have been set
+    if os.path.isfile(args_ciakfile_path):
         return args_ciakfile_path
-
-    if args_ciakfile is not None:
-        if "CIAKFILES_DIR" in os.environ:
-            return os.path.join(os.environ["CIAKFILES_DIR"], args_ciakfile)
-        return args_ciakfile
-
-    raise RuntimeError("One between ciakfile and --ciakfile-path is required")
+    raise RuntimeError(f"Ciakfile {args_ciakfile_path} does not exist")
 
 
 def _run_one_command(cmd) -> int:
@@ -429,7 +470,7 @@ def run_commands(
     if parallel:
         if fail_fast:
             raise NotImplementedError(
-                "Parallel execution with --fail-fast " "is not implemented yet"
+                "Parallel execution with --fail-fast is not implemented yet"
             )
         with concurrent.futures.ProcessPoolExecutor() as executor:
             executor.map(_run_one_command, list_)
@@ -482,7 +523,9 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
     )
 
     parser.add_argument(
-        "--no-parallel", help="Ignore parallel blocks", action="store_true"
+        "--no-parallel",
+        help="Ignore parallel blocks (run sequentially)",
+        action="store_true",
     )
 
     args, unknown = parser.parse_known_args()
