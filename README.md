@@ -3,6 +3,8 @@
 </p>
 
 [![PyPI version](https://badge.fury.io/py/ciak.svg)](https://badge.fury.io/py/ciak)
+[![Test](https://github.com/Sbozzolo/ciak/actions/workflows/test.yml/badge.svg)](https://github.com/Sbozzolo/ciak/actions/workflows/test.yml)
+[![Coverage](https://codecov.io/github/Sbozzolo/ciak/branch/main/graph/badge.svg?token=0D6WFHT1UQ)](https://codecov.io/github/Sbozzolo/ciak)
 
 `ciak` is a Python program to run executables according to a configuration file
 (a *ciakfile*) optionally containing user-declared variables that can be

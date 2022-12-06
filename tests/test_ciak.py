@@ -20,7 +20,7 @@ from unittest import mock
 
 import pytest
 
-import ciak
+from ciak import ciak
 
 
 def test_read_asterisk_lines_from_file():
