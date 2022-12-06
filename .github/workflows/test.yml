@@ -40,7 +40,7 @@ jobs:
 
       - name: Black
         continue-on-error: true
-        run: poetry run black --exclude ciak/ciak36.py -l 89 . --check
+        run: poetry run black --exclude ciak/ciak36.py -l 89 ciak tests --check
 
       - name: Mypy
         continue-on-error: true
