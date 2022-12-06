@@ -16,10 +16,11 @@
 # this program; if not, see <https://www.gnu.org/licenses/>.
 
 import os
+from unittest import mock
 
 import pytest
 
-from ciak import ciak
+import ciak
 
 
 def test_read_asterisk_lines_from_file():
@@ -106,7 +107,6 @@ def test_substitute_template():
 
     # Nothing to do
     assert ciak.substitute_template("test", {"bob": "unaga"}) == "test"
-
     # One sub
     assert ciak.substitute_template("{{test}}", {"test": "bob"}) == "bob"
 
@@ -115,6 +115,10 @@ def test_substitute_template():
 
     # One sub with default used
     assert ciak.substitute_template("{{test::lol}}", {"mamma": "gamma"}) == "lol"
+
+    # One sub without the default and missing key
+    with pytest.raises(RuntimeError):
+        ciak.substitute_template("{{test}}", {"mytest": "bob"})
 
     # Two subs
     assert (
@@ -139,3 +143,94 @@ def test_substitute_template():
         )
         == "mamma and lol"
     )
+
+
+def test_get_ciakfile(tmp_path):
+
+    # Not passing anything (passing None, None)
+    with pytest.raises(RuntimeError):
+        assert ciak.get_ciakfile(None, None)
+
+    # Passing the ciakfile_path (we have to ensure that the file exists)
+    path = tmp_path / "myciak.org"
+    path.write_text("* echo 'hi'")
+
+    assert ciak.get_ciakfile("anything", str(path)) == str(path)
+
+    # Passing the ciakfile and 'CIAKFILES_DIR'
+    with mock.patch.dict(os.environ, {"CIAKFILES_DIR": str(tmp_path / "")}):
+        assert ciak.get_ciakfile("myciak.org", None) == str(path)
+
+    # Passing the ciakfile but not 'CIAKFILES_DIR', so we should use the current
+    # directory. To keep things clean, instead, we change our directory
+    os.chdir(str(tmp_path / ""))
+    assert ciak.get_ciakfile("myciak.org", None) == str(path)
+
+    # ciakfile not existing
+    with pytest.raises(RuntimeError):
+        assert ciak.get_ciakfile("ciok.bob", None)
+
+
+def test_run_one_command():
+    # _run_command takes a string for the command and returns the exit code
+    assert ciak._run_one_command("ls -l -a -h") == 0
+
+
+def test_run_commands():
+
+    # Test two commands sequentially, just checking that there are no errors
+    _ = ciak.run_commands(("ls -l -a -h", "ls -h -a"))
+
+    # Check with fail_fast (we trigger an error by providing a folder that does
+    # not exist)
+    _ = ciak.run_commands(("ls bobby", "ls -h -a"), fail_fast=True)
+
+    # Test two commands in parallel, just checking that there are no errors
+    _ = ciak.run_commands(("ls -l -a -h", "ls -h -a"), parallel=True)
+
+
+def test_main(tmp_path):
+    # Integration test
+    #
+    # We check a fairly complete case with parallel execution and substitutions
+    #
+
+    path = tmp_path / "ciak_integration.org"
+
+    path.write_text(
+        """\
+* mkdir {{where::/tmp}}/{{subdir::sub}}
+* # BEGIN_PARALLEL
+* touch
+** {{where::/tmp}}/{{subdir::sub}}/this
+** {{where::/tmp}}/{{subdir::sub}}/that
+* # END_PARALLEL"""
+    )
+
+    with mock.patch(
+        "sys.argv",
+        [
+            "main",
+            "--ciakfile-path",
+            str(path),
+            "--where",
+            str(tmp_path / ""),
+            "--verbose",
+        ],
+    ):
+        ciak.main()
+
+    assert os.path.isfile(tmp_path / "sub/this") is True
+
+    with mock.patch(
+        "sys.argv",
+        [
+            "main",
+            "--ciakfile-path",
+            str(path),
+            "--where",
+            str(tmp_path / ""),
+            "--verbose",
+        ],
+    ):
+        ciak.main()
