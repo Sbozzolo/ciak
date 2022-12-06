@@ -303,8 +303,10 @@ def prepare_commands(list_) :
     :rtype: tuple of str
 
     """
-    # First we prepare another list with the number of asterisks of each element
-    num_asterisks = tuple(map(lambda x: len(re.findall(r"\*", x)), list_))
+    # First we prepare another list with the number of asterisks of each element.
+    # To do so, we extract the leading asterisks first
+    asterisks = tuple(map(lambda x: re.match(_ASTERISK_REGEX, x).group(0), list_))  # type: ignore
+    num_asterisks = tuple(map(lambda x: len(re.findall(r"\*", x)), asterisks))
 
     num_elements = len(num_asterisks)
 
@@ -578,8 +580,7 @@ Note: the keys {reserved_keys} are not allowed (as they are used to control the
     for block in execution_blocks:
         # Extract commands as list of string, prepare them and run them.
         commands = tuple(
-            substitute_template(cmd, substitution_dict)
-            for cmd in prepare_commands(block.commands)
+            substitute_template(cmd, substitution_dict) for cmd in block.commands
         )
         if args.dry_run:
             for cmd in commands:
